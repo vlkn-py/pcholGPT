@@ -12,17 +12,18 @@ CHANNEL_ID = -1002995313257
 
 dp = Dispatcher()
 
+# память для ИИ
 memory = [
     {
         "role": "system",
-        "content": "ты помощник пчолкиGPT. отвечай кратко и по делу на русском."
+        "content": "ты помощник пчолкиGPT. отвечай кратко и по делу на русском, всегда пиши с маленькой буквы."
     }
 ]
 
 
-# 🌐 чтобы Render не засыпал
+# 🌐 веб-сервер для Render (антисон)
 async def handle(request):
-    return web.Response(text="ok")
+    return web.Response(text="ok pcholkiGPT alive")
 
 async def start_web():
     app = web.Application()
@@ -35,7 +36,16 @@ async def start_web():
     await site.start()
 
 
-# 🤖 ИИ запрос
+# 🌦 погода через wttr.in (без ключа)
+async def get_weather(city: str):
+    url = f"https://wttr.in/{city}?format=3&lang=ru"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            return await resp.text()
+
+
+# 🤖 ИИ
 async def ask_ai(text: str):
     memory.append({"role": "user", "content": text})
 
@@ -58,7 +68,7 @@ async def ask_ai(text: str):
             data = await resp.json()
 
             if "choices" not in data:
-                return "ошибка"
+                return "ошибка ии"
 
             answer = data["choices"][0]["message"]["content"]
 
@@ -67,7 +77,7 @@ async def ask_ai(text: str):
             return answer
 
 
-# 📩 реагирует только на "пчол"
+# 📩 обработчик
 @dp.channel_post()
 async def handler(message: Message, bot: Bot):
 
@@ -77,9 +87,9 @@ async def handler(message: Message, bot: Bot):
     if not message.text:
         return
 
-    text = message.text.strip()
+    text = message.text.strip().lower()
 
-    if not text.lower().startswith("пчол"):
+    if not text.startswith("пчол"):
         return
 
     text = text[4:].strip()
@@ -87,8 +97,20 @@ async def handler(message: Message, bot: Bot):
     if not text:
         return
 
-    answer = await ask_ai(text)
+    # 🌦 ПОГОДА
+    if text.startswith("погода"):
+        city = text.replace("погода", "").strip()
 
+        if not city:
+            await bot.send_message(CHANNEL_ID, "укажи город")
+            return
+
+        weather = await get_weather(city)
+        await bot.send_message(CHANNEL_ID, weather)
+        return
+
+    # 🤖 ИИ
+    answer = await ask_ai(text)
     await bot.send_message(CHANNEL_ID, answer)
 
 
