@@ -1,17 +1,26 @@
 import asyncio
 import os
+import aiohttp
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
 
 TOKEN = os.getenv("TOKEN")
+OPENROUTER_KEY = os.getenv("OPENROUTER_KEY")
 
 CHANNEL_ID = -1002995313257
 
 dp = Dispatcher()
 
+memory = [
+    {
+        "role": "system",
+        "content": "ты помощник пчолкиGPT. отвечай кратко и по делу на русском."
+    }
+]
 
-# 🌐 веб-сервер для Render (антисон через HTTP)
+
+# 🌐 чтобы Render не засыпал
 async def handle(request):
     return web.Response(text="ok")
 
@@ -26,7 +35,39 @@ async def start_web():
     await site.start()
 
 
-# 📩 обработка сообщений
+# 🤖 ИИ запрос
+async def ask_ai(text: str):
+    memory.append({"role": "user", "content": text})
+
+    if len(memory) > 20:
+        memory.pop(1)
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "openai/gpt-4o-mini",
+                "messages": memory
+            }
+        ) as resp:
+
+            data = await resp.json()
+
+            if "choices" not in data:
+                return "ошибка"
+
+            answer = data["choices"][0]["message"]["content"]
+
+            memory.append({"role": "assistant", "content": answer})
+
+            return answer
+
+
+# 📩 реагирует только на "пчол"
 @dp.channel_post()
 async def handler(message: Message, bot: Bot):
 
@@ -38,7 +79,6 @@ async def handler(message: Message, bot: Bot):
 
     text = message.text.strip()
 
-    # реагирует только на "пчол"
     if not text.lower().startswith("пчол"):
         return
 
@@ -47,8 +87,9 @@ async def handler(message: Message, bot: Bot):
     if not text:
         return
 
-    # просто отвечает текстом без добавок
-    await bot.send_message(CHANNEL_ID, text)
+    answer = await ask_ai(text)
+
+    await bot.send_message(CHANNEL_ID, answer)
 
 
 # 🚀 запуск
